@@ -343,6 +343,7 @@ def runEpisode(agent, environment, discount, decision, display, message, pause, 
     environment.reset()
     if 'startEpisode' in dir(agent): agent.startEpisode()
     message("BEGINNING EPISODE: "+str(episode)+"\n")
+
     while True:
 
         # DISPLAY CURRENT STATE
@@ -479,10 +480,16 @@ if __name__ == '__main__':
     # GET THE AGENT
     ###########################
 
-    import valueIterationAgents, qlearningAgents
+    import valueIterationAgents, qlearningAgents, reinforceAgent
     a = None
     if opts.agent == 'value':
         a = valueIterationAgents.ValueIterationAgent(mdp, opts.discount, opts.iters)
+    elif opts.agent == "reinforce":
+        gridWorldEnv = GridworldEnvironment(mdp)
+        actionFn = lambda state: mdp.getPossibleActions(state)
+        learnOpts = {'gamma': opts.discount,
+                      'actionFn': actionFn}
+        a = reinforceAgent.ReinforceAgent(**learnOpts)
     elif opts.agent == 'q':
         #env.getPossibleActions, opts.discount, opts.learningRate, opts.epsilon
         #simulationFn = lambda agent, state: simulation.GridworldSimulation(agent,state,mdp)
@@ -536,7 +543,6 @@ if __name__ == '__main__':
             display.pause()
     except KeyboardInterrupt:
         sys.exit(0)
-
 
 
     # FIGURE OUT WHAT TO DISPLAY EACH TIME STEP (IF ANYTHING)
