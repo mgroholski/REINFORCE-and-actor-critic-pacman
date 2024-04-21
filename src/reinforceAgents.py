@@ -1,13 +1,63 @@
-from game import Directions, Agent, Actions
+from game import Directions, Agent, Actions, GameStateData
+from pacman import GameState
 import random,util,time,math
 
-def softmaxPolicy(action, state, thetaVector):
+def softmaxPolicy(action, state, thetaVector, getLegalActions):
+    numeratorFeatureVector = getFeatureVector(action, state)
+
+    if len(numeratorFeatureVector) != len(thetaVector):
+        print("Theta and Feature Vector are different lengths.")
+        exit()
+
+    hValue = 0
+    for i in range(len(thetaVector)):
+        hValue += thetaVector[i] * numeratorFeatureVector[i]
+    try:
+        numerator = math.exp(hValue)
+    except:
+        numerator = 0
+
+    denominator = 0
+    for legalAction in getLegalActions(state):
+        featureVector = getFeatureVector(legalAction, state)
+        hValue = 0
+        for i in range(len(thetaVector)):
+            hValue += thetaVector[i] * featureVector[i]
+
+        try:
+            denominator += math.exp(hValue)
+        except:
+            denominator += 0
+
+    return (numerator / denominator) if denominator != 0 else 0
+
+
+def getFeatureVector(action, state):
+    # Features
+    # Features taken from https://cs229.stanford.edu/proj2017/final-reports/5241109.pdf
+    # - Delta of Distance to Closest Food
+    # - Delta of Total Distance to Active Ghost
+    # - Delta of Distance to Closest Active Ghost
+    # - Delta Minimum Distance to Scared Ghost
+    # - Delta Total Distance to Scared Ghost
+    # - Delta Minimum distance to Capsule
+
+    newState = state.generatePacmanSuccessor(action)
+
+    if type(state) != GameState:
+        util.raiseNotDefined()
+
+    ghostPositions = state.getGhostPositions()
+    pacmanState = state.getPacmanState()
+
+    newGhostPositions = newState.getGhostPositions()
+    newPacmanState = newState.getPacmanState()
+
     util.raiseNotDefined()
-    denominatorSum = 0
-    pass
+
 
 class ReinforceAgent(Agent):
-    def __init__(self, actionFn = None, gamma=1, policy = softmaxPolicy, numTraining=100):
+    def __init__(self, actionFn = None, gamma=1, alpha=0.2, policy = softmaxPolicy, numTraining=100):
         """
         actionFn: Function which takes a state and returns the list of legal actions
 
@@ -22,25 +72,58 @@ class ReinforceAgent(Agent):
 
         self.policy = policy
 
-        self.theta = [1, 1, 1, 1]
+        self.theta = [1, 1, 1, 1, 1, 1]
         self.gamma = gamma
+        self.alpha = alpha
 
 
-    def update(self, episodeData):
-        #TODO: Policy gradient update
-        pass
+    def update(self):
+        for t in range(len(self.episodeTriplets) - 1):
+            gValue = self.episodeTriplets[t][0]
+
+            gradientVector = [0] * len(self.theta)
+
+            featureVector = getFeatureVector(self.episodeTriplets[t][2], self.episodeTriplets[t][1])
+            actionProbabilties = []
+            actionFeatureVectors = []
+
+            for action in self.episodeTriplets[t][1].getLegalActions():
+                actionProbabilties.append(self.policy(action, self.episodeTriplets[t][1], self.theta, self.getLegalActions))
+                actionFeatureVectors.append(getFeatureVector(action, self.episodeTriplets[t][1]))
+
+            # x(s,a) / Sum pi(s,*)x(s,*)
+            for i in range(len(gradientVector)):
+                actionSum = 0
+                for j in range(len(actionProbabilties)):
+                    actionSum += actionProbabilties[j] * actionFeatureVectors[j][i]
+
+                if actionSum == 0:
+                    gradientVector[i] = 0
+                else:
+                    gradientVector[i] = featureVector[i] / actionSum
+
+            for j in range(len(self.theta)):
+                self.theta[j] += self.alpha * pow(self.gamma, t) * gValue * gradientVector[j]
 
     def getAction(self, state):
         actionProbabilities = []
-
+        probabilitySum = 0
         for action in self.getLegalActions(state):
-            actionProbabilities.append((self.policy(action, state, self.theta), action))
+            probability = self.policy(action, state, self.theta, self.getLegalActions)
+            actionProbabilities.append((probability, action))
+            probabilitySum += probability
+
 
         randomNum = random.random()
         for action in actionProbabilities:
-            randomNum -= action[1]
+            randomNum -= action[0]
             if randomNum <= 0:
-                return action[0]
+                self.doAction(state, action[1])
+                return action[1]
+
+        print("Did not find a legal action!")
+        print("Action Probabilities: ", actionProbabilities)
+        util.raiseNotDefined()
 
     def getPolicy(self, state):
         util.raiseNotDefined()
@@ -53,9 +136,6 @@ class ReinforceAgent(Agent):
         """
         return self.actionFn(state)
 
-    def getFeatureVector(self, state, action):
-        pass
-
     def observeTransition(self, state, action, nextState, deltaReward):
         """
             Called by environment to inform agent that a transition has
@@ -66,7 +146,7 @@ class ReinforceAgent(Agent):
         """
         reward = deltaReward
         if len(self.episodeTriplets) == 0:
-            reward = -1
+            reward = 0
         self.episodeTriplets.append((reward, state, action))
 
     def startEpisode(self):
@@ -81,8 +161,7 @@ class ReinforceAgent(Agent):
         """
           Called by environment when episode is done
         """
-
-
+        self.update()
 
         self.episodesSoFar += 1
         if self.episodesSoFar >= self.numTraining:
