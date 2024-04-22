@@ -167,6 +167,8 @@ class ReinforceAgent(Agent):
 
         numTraining - number of training episodes, i.e. no learning after these many episodes
         """
+
+        print(gamma, alpha)
         if actionFn == None:
             actionFn = lambda state: state.getLegalActions()
         self.actionFn = actionFn
