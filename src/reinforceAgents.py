@@ -196,16 +196,13 @@ class ReinforceAgent(Agent):
                 actionProbabilties.append(self.policy(action, self.episodeTriplets[t][0], self.theta, self.getLegalActions))
                 actionFeatureVectors.append(getFeatureVector(action, self.episodeTriplets[t][0], self.getLegalActions))
 
-            # x(s,a) / Sum pi(s,*)x(s,*)
+            # x(s,a) - Sum pi(s,*)x(s,*)
             for i in range(len(gradientVector)):
                 actionSum = 0
                 for j in range(len(actionProbabilties)):
                     actionSum += actionProbabilties[j] * actionFeatureVectors[j][i]
 
-                if actionSum == 0:
-                    gradientVector[i] = 0
-                else:
-                    gradientVector[i] = featureVector[i] / actionSum
+                gradientVector[i] = featureVector[i] - actionSum
 
             for j in range(len(self.theta)):
                 self.theta[j] += self.alpha * pow(self.gamma, t) * gValue * gradientVector[j]
