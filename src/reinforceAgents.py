@@ -179,8 +179,8 @@ class ReinforceAgent(Agent):
         self.policy = policy
 
         self.theta = [1, 1, 1, 1, 1]
-        self.gamma = gamma
-        self.alpha = alpha
+        self.gamma = float(gamma)
+        self.alpha = float(alpha)
 
     def update(self):
         # Softmax Derivative: https://math.stackexchange.com/questions/2013050/log-of-softmax-function-derivative
