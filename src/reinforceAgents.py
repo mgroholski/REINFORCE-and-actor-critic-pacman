@@ -1,25 +1,52 @@
-from game import Directions, Agent, Actions, GameStateData
+from game import Directions, Agent, Actions
 from pacman import GameState
 import random,util,time,math
+import sys
+
+def bfsDistance(state, returnCondition, getLegalActions) -> int:
+    queue = util.Queue()
+    queue.push((state, 0))
+
+    closed = set()
+
+    while not queue.isEmpty():
+        currentState, currentDistance = queue.pop()
+
+        if returnCondition(currentState.getPacmanState().getPosition()):
+            return currentDistance
+
+        if currentState.getPacmanPosition() not in closed:
+            closed.add(currentState.getPacmanPosition())
+
+            for action in getLegalActions(currentState):
+                queue.push((currentState.generatePacmanSuccessor(action), currentDistance + 1))
+
+    return sys.maxsize
+    raise Exception("Could not find returnCondtion.\n" + str(state))
 
 def softmaxPolicy(action, state, thetaVector, getLegalActions):
-    numeratorFeatureVector = getFeatureVector(action, state)
+    # Implementation Help: https://towardsdatascience.com/policy-based-reinforcement-learning-the-easy-way-8de9a3356083
+    numeratorFeatureVector = getFeatureVector(action, state, getLegalActions)
 
     if len(numeratorFeatureVector) != len(thetaVector):
-        print("Theta and Feature Vector are different lengths.")
+        print(f"Theta (Legnth {len(thetaVector)}) and Feature Vector (Length {len(numeratorFeatureVector)}) are different lengths.")
         exit()
 
     hValue = 0
     for i in range(len(thetaVector)):
         hValue += thetaVector[i] * numeratorFeatureVector[i]
+
     try:
         numerator = math.exp(hValue)
     except:
-        numerator = 0
+        if hValue < 0:
+            numerator = 0
+        else:
+            numerator = sys.maxsize
 
     denominator = 0
     for legalAction in getLegalActions(state):
-        featureVector = getFeatureVector(legalAction, state)
+        featureVector = getFeatureVector(legalAction, state, getLegalActions)
         hValue = 0
         for i in range(len(thetaVector)):
             hValue += thetaVector[i] * featureVector[i]
@@ -27,34 +54,111 @@ def softmaxPolicy(action, state, thetaVector, getLegalActions):
         try:
             denominator += math.exp(hValue)
         except:
-            denominator += 0
+            if hValue < 0:
+                denominator += 0
+            else:
+                denominator += sys.maxsize
 
+    # if numerator == 0:
+    #     print("Numerator is zero: \n\tFeature Vec:", numeratorFeatureVector, "\n\tDenominator: ", denominator,"\n\t Theta: ", thetaVector)
+
+    if denominator == 0:
+        for legalAction in getLegalActions(state):
+            featureVector = getFeatureVector(legalAction, state, getLegalActions)
+            print("Denominator is Zero!\n\tAction:", legalAction, "\n\tFeature Vector:", featureVector)
     return (numerator / denominator) if denominator != 0 else 0
 
 
-def getFeatureVector(action, state):
+def getFeatureVector(action, state, getLegalActions):
     # Features
-    # Features taken from https://cs229.stanford.edu/proj2017/final-reports/5241109.pdf
-    # - Delta of Distance to Closest Food
-    # - Delta of Total Distance to Active Ghost
-    # - Delta of Distance to Closest Active Ghost
-    # - Delta Minimum Distance to Scared Ghost
-    # - Delta Total Distance to Scared Ghost
-    # - Delta Minimum distance to Capsule
+    # Features inpsired by https://cs229.stanford.edu/proj2017/final-reports/5241109.pdf
 
-    newState = state.generatePacmanSuccessor(action)
+    # if type(state) != GameState:
+    #     util.raiseNotDefined()
 
-    if type(state) != GameState:
-        util.raiseNotDefined()
-
-    ghostPositions = state.getGhostPositions()
+    # Current State Calculations
     pacmanState = state.getPacmanState()
 
-    newGhostPositions = newState.getGhostPositions()
-    newPacmanState = newState.getPacmanState()
+    # Distance to closest food
+    minFoodDistance = 0
+    if state.getNumFood() > 0:
+        try:
+            minFoodDistance = bfsDistance(state,
+                lambda position: state.hasFood(position[0], position[1]) or position in state.getCapsules(), getLegalActions)
+        except Exception as e:
+            print("Exception in minFoodDistance: " + str(e));
+            minFoodDistance = sys.maxsize
 
-    util.raiseNotDefined()
+    # Minimum Distance to Active Ghost
+    ghostStates = state.getGhostStates()
+    activeGhostPositions = []
+    scaredGhostPositions = []
 
+    for ghostState in ghostStates:
+        if ghostState.scaredTimer > 0:
+            scaredGhostPositions.append(ghostState.getPosition())
+        else:
+            activeGhostPositions.append(ghostState.getPosition())
+
+    nearbyActiveGhostsTwoStep = 0
+    nearbyActiveGhostsOneStep = 0
+    for ghost in activeGhostPositions:
+        distance = bfsDistance(state, lambda position: position == ghost, getLegalActions)
+        if distance <= 2:
+            nearbyActiveGhostsTwoStep += 1
+        if distance <= 1:
+            nearbyActiveGhostsOneStep += 1
+
+    # New State Calculations
+    newState = state.generatePacmanSuccessor(action)
+    newGhostStates = newState.getGhostStates()
+    newActiveGhostPositions = []
+    newScaredGhostPositions = []
+
+    for ghostState in newGhostStates:
+        if ghostState.scaredTimer > 0:
+            newScaredGhostPositions.append(ghostState.getPosition())
+        else:
+            newActiveGhostPositions.append(ghostState.getPosition())
+
+    newNearbyActiveGhostsTwoStep = 0
+    newNearbyActiveGhostsOneStep = 0
+    for ghost in activeGhostPositions:
+        distance = bfsDistance(newState, lambda position: position == ghost, getLegalActions)
+        if distance <= 2:
+            newNearbyActiveGhostsTwoStep += 1
+        if distance <= 1:
+            newNearbyActiveGhostsOneStep += 1
+
+    #Next State is terminal
+    if newState.isWin():
+        return [0,
+            newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
+            newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
+            abs(newState.getNumFood() - state.getNumFood()),
+            0]
+    elif newState.isLose():
+        return [sys.maxsize,
+            newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
+            newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
+            abs(newState.getNumFood() - state.getNumFood()),
+            sys.maxsize]
+
+    # Distance to closest food
+    newMinFoodDistance = 0
+    if newState.getNumFood() > 0:
+        try:
+            newMinFoodDistance = bfsDistance(newState,
+                lambda position: newState.hasFood(position[0], position[1]) or position in newState.getCapsules(), getLegalActions)
+        except Exception as e:
+            print("Exception in newMinFoodDistance: " + str(e));
+            newMinFoodDistance = sys.maxsize
+
+    return [newMinFoodDistance - minFoodDistance,
+        newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
+        newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
+        abs(newState.getNumFood() - state.getNumFood()),
+        len(newScaredGhostPositions) - len(scaredGhostPositions)]
 
 class ReinforceAgent(Agent):
     def __init__(self, actionFn = None, gamma=1, alpha=0.2, policy = softmaxPolicy, numTraining=100):
@@ -72,24 +176,25 @@ class ReinforceAgent(Agent):
 
         self.policy = policy
 
-        self.theta = [1, 1, 1, 1, 1, 1]
+        self.theta = [1, 1, 1, 1, 1]
         self.gamma = gamma
         self.alpha = alpha
 
-
     def update(self):
+        # Softmax Derivative: https://math.stackexchange.com/questions/2013050/log-of-softmax-function-derivative
         for t in range(len(self.episodeTriplets) - 1):
-            gValue = self.episodeTriplets[t][0]
+            gValue = self.episodeTriplets[t + 1][2]
 
+            # Calculates gradient vector
             gradientVector = [0] * len(self.theta)
 
-            featureVector = getFeatureVector(self.episodeTriplets[t][2], self.episodeTriplets[t][1])
+            featureVector = getFeatureVector(self.episodeTriplets[t][1], self.episodeTriplets[t][0], self.getLegalActions)
             actionProbabilties = []
             actionFeatureVectors = []
 
-            for action in self.episodeTriplets[t][1].getLegalActions():
-                actionProbabilties.append(self.policy(action, self.episodeTriplets[t][1], self.theta, self.getLegalActions))
-                actionFeatureVectors.append(getFeatureVector(action, self.episodeTriplets[t][1]))
+            for action in self.getLegalActions(self.episodeTriplets[t][0]):
+                actionProbabilties.append(self.policy(action, self.episodeTriplets[t][0], self.theta, self.getLegalActions))
+                actionFeatureVectors.append(getFeatureVector(action, self.episodeTriplets[t][0], self.getLegalActions))
 
             # x(s,a) / Sum pi(s,*)x(s,*)
             for i in range(len(gradientVector)):
@@ -104,6 +209,7 @@ class ReinforceAgent(Agent):
 
             for j in range(len(self.theta)):
                 self.theta[j] += self.alpha * pow(self.gamma, t) * gValue * gradientVector[j]
+        print("New Theta Values: ", self.theta)
 
     def getAction(self, state):
         actionProbabilities = []
@@ -112,7 +218,6 @@ class ReinforceAgent(Agent):
             probability = self.policy(action, state, self.theta, self.getLegalActions)
             actionProbabilities.append((probability, action))
             probabilitySum += probability
-
 
         randomNum = random.random()
         for action in actionProbabilities:
@@ -123,7 +228,10 @@ class ReinforceAgent(Agent):
 
         print("Did not find a legal action!")
         print("Action Probabilities: ", actionProbabilities)
-        util.raiseNotDefined()
+
+        #Choose action uniformly at random
+        return random.choice(self.getLegalActions(state))
+
 
     def getPolicy(self, state):
         util.raiseNotDefined()
@@ -145,9 +253,7 @@ class ReinforceAgent(Agent):
             NOTE: Do *not* override or call this function
         """
         reward = deltaReward
-        if len(self.episodeTriplets) == 0:
-            reward = 0
-        self.episodeTriplets.append((reward, state, action))
+        self.episodeTriplets.append((state, action, reward))
 
     def startEpisode(self):
         """
@@ -162,6 +268,8 @@ class ReinforceAgent(Agent):
           Called by environment when episode is done
         """
         self.update()
+
+        print(f"Episode {self.episodesSoFar} finished")
 
         self.episodesSoFar += 1
         if self.episodesSoFar >= self.numTraining:
