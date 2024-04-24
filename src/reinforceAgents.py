@@ -123,7 +123,7 @@ def getFeatureVector(action, state, getLegalActions):
 
     newNearbyActiveGhostsTwoStep = 0
     newNearbyActiveGhostsOneStep = 0
-    for ghost in activeGhostPositions:
+    for ghost in newActiveGhostPositions:
         distance = bfsDistance(newState, lambda position: position == ghost, getLegalActions)
         if distance <= 2:
             newNearbyActiveGhostsTwoStep += 1
@@ -135,14 +135,14 @@ def getFeatureVector(action, state, getLegalActions):
         return [0,
             newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
             newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
-            abs(newState.getNumFood() - state.getNumFood()),
-            0]
+            (newState.getNumFood() + len(newState.getCapsules())) - (state.getNumFood() + len(state.getCapsules())),
+            len(newScaredGhostPositions) - len(scaredGhostPositions)]
     elif newState.isLose():
         return [sys.maxsize,
             newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
             newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
-            abs(newState.getNumFood() - state.getNumFood()),
-            sys.maxsize]
+            (newState.getNumFood() + len(newState.getCapsules())) - (state.getNumFood() + len(state.getCapsules())),
+            len(newScaredGhostPositions) - len(scaredGhostPositions)]
 
     # Distance to closest food
     newMinFoodDistance = 0
@@ -157,7 +157,7 @@ def getFeatureVector(action, state, getLegalActions):
     return [newMinFoodDistance - minFoodDistance,
         newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
         newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
-        abs(newState.getNumFood() - state.getNumFood()),
+        (newState.getNumFood() + len(newState.getCapsules())) - (state.getNumFood() + len(state.getCapsules())),
         len(newScaredGhostPositions) - len(scaredGhostPositions)]
 
 class ReinforceAgent(Agent):
@@ -168,7 +168,6 @@ class ReinforceAgent(Agent):
         numTraining - number of training episodes, i.e. no learning after these many episodes
         """
 
-        print(gamma, alpha)
         if actionFn == None:
             actionFn = lambda state: state.getLegalActions()
         self.actionFn = actionFn
@@ -178,14 +177,15 @@ class ReinforceAgent(Agent):
 
         self.policy = policy
 
-        self.theta = [1, 1, 1, 1, 1]
+        self.theta = [0,0,0,0,0]
+        print("Initial Theta: ", self.theta)
         self.gamma = float(gamma)
         self.alpha = float(alpha)
 
     def update(self):
         # Softmax Derivative: https://math.stackexchange.com/questions/2013050/log-of-softmax-function-derivative
         for t in range(len(self.episodeTriplets) - 1):
-            gValue = self.episodeTriplets[t + 1][2]
+            gValue = self.episodeTriplets[t][2]
 
             # Calculates gradient vector
             gradientVector = [0] * len(self.theta)
