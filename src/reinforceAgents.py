@@ -123,7 +123,7 @@ def getFeatureVector(action, state, getLegalActions):
 
     newNearbyActiveGhostsTwoStep = 0
     newNearbyActiveGhostsOneStep = 0
-    for ghost in newActiveGhostPositions:
+    for ghost in activeGhostPositions:
         distance = bfsDistance(newState, lambda position: position == ghost, getLegalActions)
         if distance <= 2:
             newNearbyActiveGhostsTwoStep += 1
