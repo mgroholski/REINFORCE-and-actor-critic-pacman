@@ -2,11 +2,123 @@ from game import Directions, Agent, Actions
 from pacman import GameState
 import random,util,time,math
 import sys
-from featureExtractors import *
 
-def softmaxPolicy(action, state, thetaVector, getLegalActions, featExtractor):
+def bfsDistance(state, returnCondition, getLegalActions) -> int:
+    queue = util.Queue()
+    queue.push((state, 0))
+
+    closed = set()
+
+    while not queue.isEmpty():
+        currentState, currentDistance = queue.pop()
+
+        if returnCondition(currentState.getPacmanState().getPosition()):
+            return currentDistance
+
+        if currentState.getPacmanPosition() not in closed:
+            closed.add(currentState.getPacmanPosition())
+
+            for action in getLegalActions(currentState):
+                queue.push((currentState.generatePacmanSuccessor(action), currentDistance + 1))
+
+    return sys.maxsize
+    raise Exception("Could not find returnCondtion.\n" + str(state))
+
+def getFeatureVector(state, action, getLegalActions):
+    # Features
+    # Features inpsired by https://cs229.stanford.edu/proj2017/final-reports/5241109.pdf
+
+    # if type(state) != GameState:
+    #     util.raiseNotDefined()
+
+    # Current State Calculations
+    pacmanState = state.getPacmanState()
+
+    # Distance to closest food
+    minFoodDistance = 0
+    if state.getNumFood() > 0:
+        try:
+            minFoodDistance = bfsDistance(state,
+                lambda position: state.hasFood(position[0], position[1]) or position in state.getCapsules(), getLegalActions)
+        except Exception as e:
+            print("Exception in minFoodDistance: " + str(e));
+            minFoodDistance = sys.maxsize
+
+    # Minimum Distance to Active Ghost
+    ghostStates = state.getGhostStates()
+    activeGhostPositions = []
+    scaredGhostPositions = []
+
+    for ghostState in ghostStates:
+        if ghostState.scaredTimer > 0:
+            scaredGhostPositions.append(ghostState.getPosition())
+        else:
+            activeGhostPositions.append(ghostState.getPosition())
+
+    nearbyActiveGhostsTwoStep = 0
+    nearbyActiveGhostsOneStep = 0
+    for ghost in activeGhostPositions:
+        distance = bfsDistance(state, lambda position: position == ghost, getLegalActions)
+        if distance <= 2:
+            nearbyActiveGhostsTwoStep += 1
+        if distance <= 1:
+            nearbyActiveGhostsOneStep += 1
+
+    # New State Calculations
+    newState = state.generatePacmanSuccessor(action)
+    newGhostStates = newState.getGhostStates()
+    newActiveGhostPositions = []
+    newScaredGhostPositions = []
+
+    for ghostState in newGhostStates:
+        if ghostState.scaredTimer > 0:
+            newScaredGhostPositions.append(ghostState.getPosition())
+        else:
+            newActiveGhostPositions.append(ghostState.getPosition())
+
+    newNearbyActiveGhostsTwoStep = 0
+    newNearbyActiveGhostsOneStep = 0
+    for ghost in newActiveGhostPositions:
+        distance = bfsDistance(newState, lambda position: position == ghost, getLegalActions)
+        if distance <= 2:
+            newNearbyActiveGhostsTwoStep += 1
+        if distance <= 1:
+            newNearbyActiveGhostsOneStep += 1
+
+    #Next State is terminal
+    if newState.isWin():
+        return [0,
+            newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
+            newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
+            (newState.getNumFood() + len(newState.getCapsules())) - (state.getNumFood() + len(state.getCapsules())),
+            len(newScaredGhostPositions) - len(scaredGhostPositions)]
+    elif newState.isLose():
+        return [sys.maxsize,
+            newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
+            newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
+            (newState.getNumFood() + len(newState.getCapsules())) - (state.getNumFood() + len(state.getCapsules())),
+            len(newScaredGhostPositions) - len(scaredGhostPositions)]
+
+    # Distance to closest food
+    newMinFoodDistance = 0
+    if newState.getNumFood() > 0:
+        try:
+            newMinFoodDistance = bfsDistance(newState,
+                lambda position: newState.hasFood(position[0], position[1]) or position in newState.getCapsules(), getLegalActions)
+        except Exception as e:
+            print("Exception in newMinFoodDistance: " + str(e));
+            newMinFoodDistance = sys.maxsize
+
+    return [newMinFoodDistance - minFoodDistance,
+        newNearbyActiveGhostsTwoStep - nearbyActiveGhostsTwoStep,
+        newNearbyActiveGhostsOneStep - nearbyActiveGhostsOneStep,
+        (newState.getNumFood() + len(newState.getCapsules())) - (state.getNumFood() + len(state.getCapsules())),
+        len(newScaredGhostPositions) - len(scaredGhostPositions)]
+
+
+def softmaxPolicy(action, state, thetaVector, getLegalActions):
     # Implementation Help: https://towardsdatascience.com/policy-based-reinforcement-learning-the-easy-way-8de9a3356083
-    numeratorFeatureVector = featExtractor.getFeatures(state, action)
+    numeratorFeatureVector = getFeatureVector(state, action, getLegalActions)
 
     if thetaVector is None:
         thetaVector = [0] * len(numeratorFeatureVector)
@@ -29,7 +141,7 @@ def softmaxPolicy(action, state, thetaVector, getLegalActions, featExtractor):
 
     denominator = 0
     for legalAction in getLegalActions(state):
-        featureVector = featExtractor.getFeatures(state, legalAction)
+        featureVector = getFeatureVector(state, legalAction, getLegalActions)
         hValue = 0
         for i in range(len(thetaVector)):
             hValue += thetaVector[i] * featureVector[i]
@@ -46,15 +158,13 @@ def softmaxPolicy(action, state, thetaVector, getLegalActions, featExtractor):
 
 # The Actor-Critic Agent class
 class ActorCriticAgent(Agent):
-    def __init__(self, actionFn=None, gamma= 0.8, alpha_theta=0.2, alpha_w=0.2, policy=softmaxPolicy, numTraining=100, extractor='SimpleExtractor'):
+    def __init__(self, actionFn=None, gamma=0.8, alpha_theta=0.2, alpha_w=0.2, policy=softmaxPolicy, numTraining=100):
         if actionFn == None:
             actionFn = lambda state: state.getLegalActions()
         self.actionFn = actionFn
 
-        self.featExtractor = util.lookup(extractor, globals())()
-
-        self.theta = []
-        self.w = []
+        self.theta = None
+        self.w = dict()
         self.i = 1
 
         self.alpha_theta = float(alpha_theta)
@@ -74,7 +184,7 @@ class ActorCriticAgent(Agent):
         actionProbabilities = []
         probabilitySum = 0
         for action in self.getLegalActions(state):
-            probability = self.policy(action, state, self.theta, self.getLegalActions, self.featExtractor)
+            probability = self.policy(action, state, self.theta, self.getLegalActions)
             actionProbabilities.append((probability, action))
             probabilitySum += probability
 
@@ -95,12 +205,11 @@ class ActorCriticAgent(Agent):
     def getPolicy(self, state):
         util.raiseNotDefined()
 
-    def getValue(self, state)->int:
-        """
-        Calculate the estimated value of a state based on a linear combination of features and their corresponding weights.
-        """
-        return -1
+    def getValue(self, state):
+        if state.getPacmanState().getPosition() not in self.w.keys():
+            self.w[state.getPacmanState().getPosition()] = 0
 
+        return self.w[state.getPacmanState().getPosition()]
 
     def getLegalActions(self,state):
         """
@@ -118,47 +227,40 @@ class ActorCriticAgent(Agent):
 
             NOTE: Do *not* override or call this function
         """
-        # Initialize w and theta if not already
-        if len(self.w) == 0:
-            self.w = [0] * len(self.featExtractor.getFeatures(state, action))
-        if len(self.theta) == 0:
-            self.theta = [0] * len(self.w)
 
         nabla_v = 0
         if nextState.isWin() or nextState.isLose():
             nabla_v = deltaReward
         else:
-            nable_v = deltaReward + (self.gamma * self.getValue(nextState))
-
+            nabla_v = deltaReward + (self.gamma * self.getValue(nextState))
 
         delta = nabla_v - self.getValue(state)
+        self.w[state.getPacmanState().getPosition()] += self.alpha_w * self.i * delta * (nabla_v - self.getValue(state))
 
-        for t in range(len(self.episodeTriplets) - 1):
-            gValue = self.episodeTriplets[t][2]
+        # Calculates gradient vector
+        featureVector = getFeatureVector(state, action, self.getLegalActions)
 
-            # Calculates gradient vector
-            featureVector = self.featExtractor.getFeatures(state, action)
-            if self.theta is None:
-                self.theta = [0] * len(featureVector)
+        if self.theta is None:
+            self.theta = [0] * len(featureVector)
 
-            gradientVector = [0] * len(self.theta)
-            actionProbabilties = []
-            actionFeatureVectors = []
+        gradientVector = [0] * len(self.theta)
+        actionProbabilties = []
+        actionFeatureVectors = []
 
-            for action in self.getLegalActions(self.episodeTriplets[t][0]):
-                actionProbabilties.append(self.policy(action, state, self.theta, self.getLegalActions, self.featExtractor))
-                actionFeatureVectors.append(self.featExtractor.getFeatures(state, action))
+        for legalAction in self.getLegalActions(state):
+            actionProbabilties.append(self.policy(legalAction, state, self.theta, self.getLegalActions))
+            actionFeatureVectors.append(getFeatureVector(state, legalAction, self.getLegalActions))
 
-            # x(s,a) - Sum pi(s,*)x(s,*)
-            for i in range(len(gradientVector)):
-                actionSum = 0
-                for j in range(len(actionProbabilties)):
-                    actionSum += actionProbabilties[j] * actionFeatureVectors[j][i]
+        # x(s,a) - Sum pi(s,*)x(s,*)
+        for i in range(len(gradientVector)):
+            actionSum = 0
+            for j in range(len(actionProbabilties)):
+                actionSum += actionProbabilties[j] * actionFeatureVectors[j][i]
 
-                gradientVector[i] = featureVector[i] - actionSum
+            gradientVector[i] = featureVector[i] - actionSum
 
-            for j in range(len(self.theta)):
-                self.theta[j] += self.alpha * pow(self.gamma, t) * gValue * gradientVector[j]
+        for j in range(len(self.theta)):
+            self.theta[j] += self.alpha_theta * self.i * delta * gradientVector[j]
 
         self.i *= self.gamma
 
@@ -176,12 +278,12 @@ class ActorCriticAgent(Agent):
         """
           Called by environment when episode is done
         """
-        self.update()
+        print("Weights: ", self.w)
+        print("Thetas: ", self.theta)
 
         print(f"Episode {self.episodesSoFar} finished")
 
         self.episodesSoFar += 1
-        print("Increment post finish")
         if self.episodesSoFar >= self.numTraining:
             # Take off the training wheels
             self.epsilon = 0.0    # no exploration
@@ -241,7 +343,6 @@ class ActorCriticAgent(Agent):
         """
         deltaReward = state.getScore() - self.lastState.getScore()
         self.observeTransition(self.lastState, self.lastAction, state, deltaReward)
-        print("debug print in final")
         self.stopEpisode()
 
         # Make sure we have this var
