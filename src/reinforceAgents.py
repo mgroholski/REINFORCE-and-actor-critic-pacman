@@ -4,27 +4,6 @@ import random,util,time,math
 import sys
 from featureExtractors import *
 
-def bfsDistance(state, returnCondition, getLegalActions) -> int:
-    queue = util.Queue()
-    queue.push((state, 0))
-
-    closed = set()
-
-    while not queue.isEmpty():
-        currentState, currentDistance = queue.pop()
-
-        if returnCondition(currentState.getPacmanState().getPosition()):
-            return currentDistance
-
-        if currentState.getPacmanPosition() not in closed:
-            closed.add(currentState.getPacmanPosition())
-
-            for action in getLegalActions(currentState):
-                queue.push((currentState.generatePacmanSuccessor(action), currentDistance + 1))
-
-    return sys.maxsize
-    raise Exception("Could not find returnCondtion.\n" + str(state))
-
 def softmaxPolicy(action, state, thetaVector, getLegalActions, featExtractor):
     # Implementation Help: https://towardsdatascience.com/policy-based-reinforcement-learning-the-easy-way-8de9a3356083
     numeratorFeatureVector = featExtractor.getFeatures(state, action)
@@ -63,16 +42,10 @@ def softmaxPolicy(action, state, thetaVector, getLegalActions, featExtractor):
             else:
                 denominator += sys.maxsize
 
-    # if numerator == 0:
-    #     print("Numerator is zero: \n\tFeature Vec:", numeratorFeatureVector, "\n\tDenominator: ", denominator,"\n\t Theta: ", thetaVector)
-
-    if denominator == 0:
-        for legalAction in getLegalActions(state):
-            featureVector = print("Denominator is Zero!\n\tAction:", legalAction, "\n\tFeature Vector:", featureVector)
     return (numerator / denominator) if denominator != 0 else 0
 
 class ReinforceAgent(Agent):
-    def __init__(self, actionFn = None, extractor='IdentityExtractor', gamma=1, alpha=0.2, policy = softmaxPolicy, numTraining=100):
+    def __init__(self, actionFn = None, extractor='SimpleExtractor', gamma=1, alpha=0.2, policy = softmaxPolicy, numTraining=100):
         """
         actionFn: Function which takes a state and returns the list of legal actions
 
@@ -101,7 +74,7 @@ class ReinforceAgent(Agent):
             gValue = self.episodeTriplets[t][2]
 
             # Calculates gradient vector
-            featureVector = self.featExtractor.getFeatures(self.episodeTriplets[t][1], self.episodeTriplets[t][0])
+            featureVector = self.featExtractor.getFeatures(self.episodeTriplets[t][0], self.episodeTriplets[t][1])
             if self.theta is None:
                 self.theta = [0] * len(featureVector)
 
@@ -111,7 +84,7 @@ class ReinforceAgent(Agent):
 
             for action in self.getLegalActions(self.episodeTriplets[t][0]):
                 actionProbabilties.append(self.policy(action, self.episodeTriplets[t][0], self.theta, self.getLegalActions, self.featExtractor))
-                actionFeatureVectors.append(self.featExtractor.getFeatures(self.episodeTriplets[t][1], self.episodeTriplets[t][0]))
+                actionFeatureVectors.append(self.featExtractor.getFeatures(self.episodeTriplets[t][0], self.episodeTriplets[t][1]))
 
             # x(s,a) - Sum pi(s,*)x(s,*)
             for i in range(len(gradientVector)):
