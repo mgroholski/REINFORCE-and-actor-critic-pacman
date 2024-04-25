@@ -206,13 +206,16 @@ class ActorCriticAgent(Agent):
         util.raiseNotDefined()
 
     def getValue(self, state):
-        if state.getPacmanState().getPosition() not in self.w.keys():
-            self.w[state.getPacmanState().getPosition()] = 0
+        pacmanPosition = state.getPacmanState().getPosition()
+        capsules = state.getCapsules()
 
-        return self.w[state.getPacmanState().getPosition()]
+        if pacmanPosition not in self.w.keys():
+            self.w[(pacmanPosition, state.hasFood(pacmanPosition[0],pacmanPosition[1]) or pacmanPosition in capsules)] = 0
+
+        return self.w[(pacmanPosition, state.hasFood(pacmanPosition[0],pacmanPosition[1]) or pacmanPosition in capsules)]
 
     def getLegalActions(self,state):
-        """
+        """s
           Get the actions available for a given
           state. This is what you should use to
           obtain legal actions for a state
@@ -235,7 +238,10 @@ class ActorCriticAgent(Agent):
             nabla_v = deltaReward + (self.gamma * self.getValue(nextState))
 
         delta = nabla_v - self.getValue(state)
-        self.w[state.getPacmanState().getPosition()] += self.alpha_w * self.i * delta * (nabla_v - self.getValue(state))
+
+        pacmanPosition = state.getPacmanState().getPosition()
+        capsules = state.getCapsules()
+        self.w[(pacmanPosition, state.hasFood(pacmanPosition[0],pacmanPosition[1]) or pacmanPosition in capsules)] += self.alpha_w * self.i * delta * (nabla_v - self.getValue(state))
 
         # Calculates gradient vector
         featureVector = getFeatureVector(state, action, self.getLegalActions)
