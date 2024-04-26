@@ -34,6 +34,8 @@ To run the REINFORCE agent with default parameters, use `python pacman.py -p Rei
 
 `-a` : Comma seperated values sent to the agent. For learning rate and reward discount, `-a alpha=0.2,gamma=2`
 
+**To reproduce results:** `python pacman.py -p ReinforceAgent -n 80 -x 60 -a gamma=0.8,alpha=0.2 -q`
+
 ## Actor Critic Agent
 
 ### Instructions
@@ -55,3 +57,5 @@ To run the REINFORCE agent with default parameters, use `python pacman.py -p Act
 `-l` : Specify the layout of the grid.
 
 `-a` : Comma seperated values sent to the agent. For learning rate and reward discount, `-a alpha=0.2,gamma=2`
+
+**To reproduce results:** `python pacman.py -p ActorCriticAgent -n 80 -x 60 -a alpha_theta=0.25,alpha_w=0.15,gamma=0.9 -q`
