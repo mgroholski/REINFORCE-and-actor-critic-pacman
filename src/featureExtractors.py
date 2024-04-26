@@ -4,7 +4,7 @@
 # educational purposes provided that (1) you do not distribute or publish
 # solutions, (2) you retain this notice, and (3) you provide clear
 # attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
-#
+# 
 # Attribution Information: The Pacman AI projects were developed at UC Berkeley.
 # The core projects and autograders were primarily created by John DeNero
 # (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
@@ -16,7 +16,6 @@
 
 from game import Directions, Actions
 import util
-import sys
 
 class FeatureExtractor:
     def getFeatures(self, state, action):
@@ -92,17 +91,13 @@ class SimpleExtractor(FeatureExtractor):
         features["#-of-ghosts-1-step-away"] = sum((next_x, next_y) in Actions.getLegalNeighbors(g, walls) for g in ghosts)
 
         # if there is no danger of ghosts then add the food feature
-        if food[next_x][next_y]:
+        if not features["#-of-ghosts-1-step-away"] and food[next_x][next_y]:
             features["eats-food"] = 1.0
-        else:
-            features["eats-food"] = 0.0
 
         dist = closestFood((next_x, next_y), food, walls)
         if dist is not None:
             # make the distance a number less than one otherwise the update
             # will diverge wildly
             features["closest-food"] = float(dist) / (walls.width * walls.height)
-        else:
-            features["closest-food"] = sys.maxsize
         features.divideAll(10.0)
         return features
