@@ -143,7 +143,7 @@ def main():
 
     i=np.arange(len(results[0]))
     plt.plot(i,results[0],'r',label="REINFORCE Agent")
-    plt.plot(i,results[1],'k',label="Approximate QLeaning Agent")
+    plt.plot(i,results[1],'k',label="Approximate QLearning Agent")
     plt.plot(i,results[2],'b',label="Actor Critic Agent")
 
     plt.title(f'Learning Methods Convergence on {randomLayout} Layout with {numberOfGhosts} Ghosts')
