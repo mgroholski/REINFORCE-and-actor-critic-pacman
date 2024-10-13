@@ -1,4 +1,4 @@
-# CSE571 Team Project: REINFORCE and Actor Critic with Softmax Policy
+# REINFORCE and Actor Critic with Softmax Policy
 
 Matthew Groholski, Rodney Staggers, Anjali Mohanthy, Neha Shaik
 
